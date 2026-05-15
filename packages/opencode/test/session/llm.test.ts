@@ -581,6 +581,105 @@ describe("session.llm.stream", () => {
     })
   })
 
+  test("keeps plan_exit in the tool schema when permissions deny it", async () => {
+    const server = state.server
+    if (!server) {
+      throw new Error("Server not initialized")
+    }
+
+    const providerID = "alibaba"
+    const modelID = "qwen-plus"
+    const fixture = await loadFixture(providerID, modelID)
+    const model = fixture.model
+
+    const request = waitRequest(
+      "/chat/completions",
+      new Response(createChatStream("Hello"), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    )
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "opencode.json"),
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            enabled_providers: [providerID],
+            provider: {
+              [providerID]: {
+                options: {
+                  apiKey: "test-key",
+                  baseURL: `${server.url.origin}/v1`,
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await WithInstance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const resolved = await getModel(ProviderID.make(providerID), ModelID.make(model.id))
+        const sessionID = SessionID.make("session-test-plan-exit-schema")
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [
+            { permission: "plan_exit", pattern: "*", action: "deny" },
+            { permission: "bash", pattern: "*", action: "deny" },
+          ],
+        } satisfies Agent.Info
+
+        const user = {
+          id: MessageID.make("msg_user-plan-exit-schema"),
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerID: ProviderID.make(providerID), modelID: resolved.id },
+        } satisfies MessageV2.User
+
+        await drain({
+          user,
+          sessionID,
+          model: resolved,
+          agent,
+          system: ["You are a helpful assistant."],
+          messages: [{ role: "user", content: "Hello" }],
+          tools: {
+            bash: tool({
+              description: "Run a shell command",
+              inputSchema: z.object({}),
+              execute: async () => ({ output: "" }),
+            }),
+            plan_exit: tool({
+              description: "Exit plan mode",
+              inputSchema: z.object({}),
+              execute: async () => ({ output: "" }),
+            }),
+            question: tool({
+              description: "Ask a question",
+              inputSchema: z.object({}),
+              execute: async () => ({ output: "" }),
+            }),
+          },
+        })
+
+        const capture = await request
+        const tools = capture.body.tools as Array<{ function?: { name?: string } }> | undefined
+        const names = tools?.map((item) => item.function?.name).filter((name): name is string => !!name) ?? []
+        expect(names).toContain("plan_exit")
+        expect(names).toContain("question")
+        expect(names).not.toContain("bash")
+      },
+    })
+  })
+
   test("sends responses API payload for OpenAI models", async () => {
     const server = state.server
     if (!server) {

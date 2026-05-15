@@ -441,7 +441,7 @@ function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "permission" 
     Object.keys(input.tools),
     Permission.merge(input.agent.permission, input.permission ?? []),
   )
-  return Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false && !disabled.has(k))
+  return Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false && (!disabled.has(k) || k === "plan_exit"))
 }
 
 // Check if messages contain any tool-call content

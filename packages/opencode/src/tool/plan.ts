@@ -23,6 +23,13 @@ export const PlanExitTool = Tool.define(
       parameters: Parameters,
       execute: (_params: {}, ctx: Tool.Context) =>
         Effect.gen(function* () {
+          yield* ctx.ask({
+            permission: "plan_exit",
+            patterns: ["*"],
+            always: ["*"],
+            metadata: {},
+          })
+
           const instance = yield* InstanceState.context
           const info = yield* session.get(ctx.sessionID)
           const plan = path.relative(instance.worktree, Session.plan(info, instance))

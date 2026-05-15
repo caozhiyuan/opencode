@@ -70,6 +70,12 @@ const scout = testEffect(Layer.mergeAll(registryLayer({ experimentalScout: true 
 const background = testEffect(
   Layer.mergeAll(registryLayer({ experimentalBackgroundSubagents: true }), node, Agent.defaultLayer),
 )
+const planMode = testEffect(
+  Layer.mergeAll(registryLayer({ experimentalPlanMode: true, client: "cli" }), node, Agent.defaultLayer),
+)
+const planModeDesktop = testEffect(
+  Layer.mergeAll(registryLayer({ experimentalPlanMode: true, client: "desktop" }), node, Agent.defaultLayer),
+)
 
 afterEach(async () => {
   await disposeAllInstances()
@@ -102,6 +108,33 @@ describe("tool.registry", () => {
       const ids = yield* registry.ids()
 
       expect(ids).not.toContain("task_status")
+    }),
+  )
+
+  it.instance("hides plan_exit unless experimental plan mode is enabled for cli", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+
+      expect(ids).not.toContain("plan_exit")
+    }),
+  )
+
+  planMode.instance("shows plan_exit when experimental plan mode is enabled for cli", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+
+      expect(ids).toContain("plan_exit")
+    }),
+  )
+
+  planModeDesktop.instance("hides plan_exit when experimental plan mode is enabled outside cli", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+
+      expect(ids).not.toContain("plan_exit")
     }),
   )
 
